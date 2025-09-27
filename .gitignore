@@ -364,3 +364,5 @@ FodyWeavers.xsd
 
 *.env
 *.rtf
+*.bin
+*.sqlite3

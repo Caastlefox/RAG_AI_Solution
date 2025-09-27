@@ -4,32 +4,28 @@ from openai import OpenAI
 from striprtf.striprtf import rtf_to_text # type: ignore
 from os import getenv
 
-
-chroma_client = chromadb.PersistentClient(path="./chroma_db")
-
-openai_ef = embedding_functions.OpenAIEmbeddingFunction(
+def create_collection():
+    chroma_client = chromadb.PersistentClient(path="./chroma_db")
+    try:
+        chroma_client.delete_collection("Curriculumvitae")
+    except:
+        pass
+    openai_ef = embedding_functions.OpenAIEmbeddingFunction(
     api_key=getenv("OPENAI_API_KEY"),
     model_name="text-embedding-3-small"
-)
-
-collection = chroma_client.get_or_create_collection(
+    )
+    collection = chroma_client.get_or_create_collection(
     name="Curriculumvitae",
     embedding_function=openai_ef
-)
+    )
+    return collection
+
+
 
 def read_rtf(file):
     with open(file, "r", encoding="utf-8", errors="ignore") as f:
         rtf_content = f.read()
     return rtf_to_text(rtf_content)
-
-plain_text = read_rtf("CV_Konrad_Kowalczyk_DataArchitect-_English_2025_08.rtf")
-
-try:
-    chroma_client.delete_collection("documents")
-except:
-    pass
-
-collection = chroma_client.get_or_create_collection(name="documents")
 
 def chunk_text(text, chunk_size=500, overlap=50):
     chunks = []
@@ -41,38 +37,37 @@ def chunk_text(text, chunk_size=500, overlap=50):
         start += chunk_size - overlap
     return chunks
 
-all_chunks = []
-ids = []
+def add_to_collection(text,collection):
+    all_chunks = []
+    ids = []
+    chunks = chunk_text(text)
+    for j, chunk in enumerate(chunks):
+        all_chunks.append(chunk)
+        ids.append(f"doc_chunk{j}")
+    collection.add(
+        documents=all_chunks,
+        ids=ids
+    )
 
-chunks = chunk_text(plain_text)
-for j, chunk in enumerate(chunks):
-    all_chunks.append(chunk)
-    ids.append(f"doc_chunk{j}")
+def query_collection(collection, query):
+    results = collection.query(
+        query_texts=[query],
+        n_results=3
+    )
 
-collection.add(
-    documents=all_chunks,
-    ids=ids
-)
+    context = "\n".join(results["documents"][0])
+    print("Retrieved context:\n", context)
 
-query = "What does the document say about retrieval?"
-results = collection.query(
-    query_texts=[query],
-    n_results=3
-)
+    client_oa = OpenAI(api_key=getenv("OPENAI_API_KEY"),)
 
-context = "\n".join(results["documents"][0])
-print("Retrieved context:\n", context)
+    prompt = f"Answer the question based on the context:\n\n{context}\n\nQuestion: {query}"
 
-client_oa = OpenAI(api_key=getenv("OPENAI_API_KEY"),)
+    response = client_oa.chat.completions.create(
+        model="gpt-4.1",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": prompt}
+        ]
+    )
 
-prompt = f"Answer the question based on the context:\n\n{context}\n\nQuestion: {query}"
-
-response = client_oa.chat.completions.create(
-    model="gpt-4.1",
-    messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": prompt}
-    ]
-)
-
-print("Answer:", response.choices[0].message.content)
+    return response.choices[0].message.content
