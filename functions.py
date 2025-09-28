@@ -51,12 +51,10 @@ def add_to_collection(text,collection):
 
 def query_collection(collection, query):
     results = collection.query(
-        query_texts=[query],
-        n_results=3
+        query_texts=[query]
     )
 
     context = "\n".join(results["documents"][0])
-    print("Retrieved context:\n", context)
 
     client_oa = OpenAI(api_key=getenv("OPENAI_API_KEY"),)
 
